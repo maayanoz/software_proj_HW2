@@ -1,5 +1,5 @@
 import matplotlib
-matplotlib.use('Agg') # מגדיר ל-matplotlib לשמור קובץ בלי לנסות לפתוח חלון תצוגה
+matplotlib.use('Agg')  # Set matplotlib to save file without opening a display window
 import matplotlib.pyplot as plt
 from sklearn import datasets
 from sklearn.cluster import KMeans
