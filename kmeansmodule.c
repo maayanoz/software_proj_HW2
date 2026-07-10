@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <math.h>
 
-/* פונקציית עזר לשחרור זיכרון בצורה בטוחה */
+/* Helper function to safely free allocated memory */
 static void cleanup(double **points, double **centroids, double **sums, int *counts, int N, int K) {
     int i;
     if (points) {
@@ -36,18 +36,59 @@ static PyObject* fit(PyObject *self, PyObject *args) {
     N = (int)PyList_Size(data_obj);
     dim = (int)PyList_Size(PyList_GetItem(data_obj, 0));
 
-    /* הקצאות זיכרון עם בדיקת תקינות */
+    /* Memory allocation with NULL checks */
     points = (double **)calloc(N, sizeof(double *));
-    for (i = 0; i < N; i++) points[i] = (double *)malloc(dim * sizeof(double));
-    
-    centroids = (double **)calloc(K, sizeof(double *));
-    for (i = 0; i < K; i++) centroids[i] = (double *)malloc(dim * sizeof(double));
-    
-    counts = (int *)calloc(K, sizeof(int));
-    sums = (double **)calloc(K, sizeof(double *));
-    for (i = 0; i < K; i++) sums[i] = (double *)calloc(dim, sizeof(double));
+    if (points == NULL) {
+        PyErr_SetString(PyExc_MemoryError, "Memory allocation failed");
+        return NULL;
+    }
+    for (i = 0; i < N; i++) {
+        points[i] = (double *)malloc(dim * sizeof(double));
+        if (points[i] == NULL) {
+            cleanup(points, NULL, NULL, NULL, i, 0);
+            PyErr_SetString(PyExc_MemoryError, "Memory allocation failed");
+            return NULL;
+        }
+    }
 
-    /* המרת נתונים */
+    centroids = (double **)calloc(K, sizeof(double *));
+    if (centroids == NULL) {
+        cleanup(points, NULL, NULL, NULL, N, 0);
+        PyErr_SetString(PyExc_MemoryError, "Memory allocation failed");
+        return NULL;
+    }
+    for (i = 0; i < K; i++) {
+        centroids[i] = (double *)malloc(dim * sizeof(double));
+        if (centroids[i] == NULL) {
+            cleanup(points, centroids, NULL, NULL, N, i);
+            PyErr_SetString(PyExc_MemoryError, "Memory allocation failed");
+            return NULL;
+        }
+    }
+
+    counts = (int *)calloc(K, sizeof(int));
+    if (counts == NULL) {
+        cleanup(points, centroids, NULL, NULL, N, K);
+        PyErr_SetString(PyExc_MemoryError, "Memory allocation failed");
+        return NULL;
+    }
+
+    sums = (double **)calloc(K, sizeof(double *));
+    if (sums == NULL) {
+        cleanup(points, centroids, NULL, counts, N, K);
+        PyErr_SetString(PyExc_MemoryError, "Memory allocation failed");
+        return NULL;
+    }
+    for (i = 0; i < K; i++) {
+        sums[i] = (double *)calloc(dim, sizeof(double));
+        if (sums[i] == NULL) {
+            cleanup(points, centroids, sums, counts, N, i);
+            PyErr_SetString(PyExc_MemoryError, "Memory allocation failed");
+            return NULL;
+        }
+    }
+
+    /* Convert data from Python lists to C arrays */
     for (i = 0; i < N; i++) {
         PyObject *row = PyList_GetItem(data_obj, i);
         for (j = 0; j < dim; j++) points[i][j] = PyFloat_AsDouble(PyList_GetItem(row, j));
@@ -59,7 +100,7 @@ static PyObject* fit(PyObject *self, PyObject *args) {
 
     eps_sq = eps * eps;
 
-    /* לולאת K-Means */
+    /* K-Means main loop */
     for (it = 0; it < iter; ++it) {
         for (i = 0; i < K; ++i) {
             counts[i] = 0;
@@ -102,7 +143,7 @@ static PyObject* fit(PyObject *self, PyObject *args) {
         if (max_move_sq < eps_sq) break;
     }
 
-    /* בניית התוצאה */
+    /* Build the result list */
     result = PyList_New(K);
     for (i = 0; i < K; i++) {
         centroid_row = PyList_New(dim);
@@ -115,7 +156,17 @@ static PyObject* fit(PyObject *self, PyObject *args) {
 }
 
 static PyMethodDef mykmeanssp_Methods[] = {
-    {"fit", (PyCFunction)fit, METH_VARARGS, "Runs K-Means clustering algorithm."},
+    {"fit", (PyCFunction)fit, METH_VARARGS,
+     "fit(K, iter, eps, initial_centroids, data_points) -> list\n\n"
+     "Runs K-means clustering algorithm.\n\n"
+     "Args:\n"
+     "    K (int): Number of clusters\n"
+     "    iter (int): Maximum number of iterations\n"
+     "    eps (float): Convergence threshold (epsilon)\n"
+     "    initial_centroids (list): List of K initial centroid vectors\n"
+     "    data_points (list): List of N data point vectors\n\n"
+     "Returns:\n"
+     "    list: List of K final centroid vectors after convergence"},
     {NULL, NULL, 0, NULL}
 };
 
